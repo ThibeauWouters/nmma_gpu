@@ -259,7 +259,7 @@ def serialize(state: TrainState, config: ConfigDict = None):
     return serialized_dict
 
 # TODO add support for various activation functions and model architectures to be loaded
-def save_model(state: TrainState, config: ConfigDict = None, out_name: str = "my_flax_model.pickle"):
+def save_model(state: TrainState, config: ConfigDict = None, out_name: str = "my_flax_model.pkl"):
     serialized_dict = serialize(state, config)
     with open(out_name, 'wb') as handle:
         pickle.dump(serialized_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -300,7 +300,7 @@ def save_model_all_filts(svd_model: SVDTrainingModel, config: ConfigDict = None,
     filters = list(svd_model.keys())
     for filt in filters:
         model = svd_model[filt]["model"]
-        save_model(model, config, out_name=out_name + f"_{filt}.pickle")
+        save_model(model, config, out_name=out_name + f"_{filt}.pkl")
         
 def load_model_all_filts(svd_model: SVDTrainingModel, model_dir: str):
     # Iterate over all the filters that are present in the SVD model
@@ -308,7 +308,7 @@ def load_model_all_filts(svd_model: SVDTrainingModel, model_dir: str):
     for filt in filters:
         # Check whether we have a saved model for this filter
         # TODO what if file extension changes?
-        filenames = [file for file in os.listdir(model_dir) if f"{filt}.pickle" in file]
+        filenames = [file for file in os.listdir(model_dir) if f"{filt}.pkl" in file]
         if len(filenames) == 0:
             raise ValueError(f"Error loading flax model: filter {filt} does not seem to be saved in directory {model_dir}")
         elif len(filenames) > 1:
