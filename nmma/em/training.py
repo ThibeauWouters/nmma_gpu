@@ -2,6 +2,8 @@ import json
 import os
 import pickle
 
+import copy
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interpolate as interp
@@ -68,7 +70,7 @@ class SVDTrainingModel(object):
 
         if interpolation_type not in ["sklearn_gp", "tensorflow", "api_gp", "flax"]:
             raise ValueError(
-                "interpolation_type must be sklearn_gp, api_gp or tensorflow"
+                "interpolation_type must be sklearn_gp, api_gp, tensorflow or flax"
             )
 
         self.model = model

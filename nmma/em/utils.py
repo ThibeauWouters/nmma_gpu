@@ -20,6 +20,8 @@ import astropy.constants
 import matplotlib
 import matplotlib.pyplot as plt
 
+
+
 try:
     import afterglowpy
 
@@ -475,7 +477,7 @@ def calc_lc(
 
 def calc_lc_flax(
     tt,
-    param_list: np.array,
+    param_list, # TODO add type hint, but can break if jax not imported
     svd_mag_model=None,
     svd_lbol_model=None,
     mag_ncoeff=None,
@@ -509,13 +511,7 @@ def calc_lc_flax(
         maxs = svd_mag_model[filt]["maxs"]
         tt_interp = svd_mag_model[filt]["tt"]
 
-        # Simply rename
-        param_list_postprocess = param_list
-
-        for i in range(len(param_mins)):
-            param_list_postprocess.at[i].set((param_list_postprocess[i] - param_mins[i]) / (
-                param_maxs[i] - param_mins[i]
-            ))
+        param_list_postprocess = (param_list - param_mins) / (param_maxs - param_mins)
 
         # Watch out for possible confusion with names here
         state = svd_mag_model[filt]["model"]
@@ -524,21 +520,15 @@ def calc_lc_flax(
         cAproj = state.apply_fn({'params': state.params}, param_list_postprocess)
         cAstd = jnp.ones((n_coeff,))
 
-        # coverrors = np.dot(VA[:, :n_coeff], np.dot(np.power(np.diag(cAstd[:n_coeff]), 2), VA[:, :n_coeff].T))
-        # errors = np.diag(coverrors)
-
         # Go from SVD coefficients to original lightcurve data
-
         mag_back = jnp.dot(VA[:, :n_coeff], cAproj)
         mag_back = mag_back * (maxs - mins) + mins
-        # mag_back = scipy.signal.medfilt(mag_back, kernel_size=3)
 
-        ## TODO how to solve this in jax?
+        ## TODO how to implement this in jax?
         # ii = jnp.where((~jnp.isnan(mag_back)) * (tt_interp < 20.0))[0]
         # if len(ii) < 2:
         #     maginterp = jnp.nan * jnp.ones(tt.shape)
         # else:
-        #     # TODO change to jax scipy
         #     f = interp.interp1d(tt_interp[ii], mag_back[ii], fill_value="extrapolate")
         #     maginterp = f(tt)
 
@@ -546,8 +536,6 @@ def calc_lc_flax(
         # maginterp = f(tt)
 
         maginterp = mag_back
-
-        # Save end result
         mAB[filt] = maginterp
 
     if svd_lbol_model is not None:
