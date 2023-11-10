@@ -106,17 +106,16 @@ class SVDTrainingModel(object):
         self.interpolate_data(data_time_unit=data_time_unit)
 
         # Only want to train if we must, so check if the model exists
-        if start_training:
-            model_exists = self.check_model()
-            if not model_exists:
-                print("Training new model")
-                self.svd_model = self.generate_svd_model()
-                self.train_model()
-                self.save_model()
-            else:
-                print("Model exists... will load that model.")
+        model_exists = self.check_model()
+        if not model_exists and start_training:
+            print("Training new model")
+            self.svd_model = self.generate_svd_model()
+            self.train_model()
+            self.save_model()
+        else:
+            print("Model exists... will load that model.")
 
-            self.load_model()
+        self.load_model()
 
     def interpolate_data(self, data_time_unit="days"):
 
@@ -535,6 +534,7 @@ class SVDTrainingModel(object):
                 outfile = os.path.join(outdir, f"{filt}.pkl")
                 if not os.path.isfile(outfile):
                     model_exists = False
+        
         elif self.interpolation_type == "tensorflow":
             if not os.path.isfile(modelfile):
                 model_exists = False
@@ -543,7 +543,12 @@ class SVDTrainingModel(object):
                 outfile = os.path.join(outdir, f"{filt}.h5")
                 if not os.path.isfile(outfile):
                     model_exists = False
+        
         elif self.interpolation_type == "api_gp":
+            if not os.path.isfile(modelfile):
+                model_exists = False
+        
+        elif self.interpolation_type == "flax":
             if not os.path.isfile(modelfile):
                 model_exists = False
 
@@ -566,6 +571,7 @@ class SVDTrainingModel(object):
                         protocol=pickle.HIGHEST_PROTOCOL,
                     )
                     del self.svd_model[filt]["gps"]
+        
         elif self.interpolation_type == "tensorflow":
             outdir = os.path.join(self.svd_path, f"{self.model}_tf")
             if not os.path.isdir(outdir):
@@ -574,9 +580,23 @@ class SVDTrainingModel(object):
                 outfile = os.path.join(outdir, f"{filt}.h5")
                 self.svd_model[filt]["model"].save(outfile)
                 del self.svd_model[filt]["model"]
+                
+        elif self.interpolation_type == "flax":
+            from .utils_flax import save_model
+            
+            outdir = os.path.join(self.svd_path, f"{self.model}")
+            if not os.path.isdir(outdir):
+                os.makedirs(outdir)
+            for filt in self.svd_model.keys():
+                outfile = os.path.join(outdir, f"{filt}.pkl")
+                model = self.svd_model[filt]["model"]
+                save_model(model, out_name=outfile)
+                del self.svd_model[filt]["model"]
+        
         elif self.interpolation_type == "api_gp":
             get_model(self.svd_path, f"{self.model}_api", self.svd_model.keys())
 
+        # Finally, save the modelfile itself
         with open(modelfile, "wb") as handle:
             pickle.dump(self.svd_model, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -611,6 +631,7 @@ class SVDTrainingModel(object):
             for filt in self.svd_model.keys():
                 outfile = os.path.join(outdir, f"{filt}.h5")
                 self.svd_model[filt]["model"] = load_tf_model(outfile)
+        
         elif self.interpolation_type == "api_gp":
             get_model(self.svd_path, f"{self.model}_api", self.filters)
             with open(modelfile, "rb") as handle:

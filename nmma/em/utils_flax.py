@@ -211,6 +211,8 @@ def train_step(state, train_X, train_y, val_X = None, val_y = None):
     return state, train_loss, val_loss
 
 # @jax.jit
+# TODO replace jit?
+# TODO use tqdm?
 def train_loop(state: TrainState, train_X, train_y, val_X = None, val_y = None, config = None):
 
     train_losses, val_losses = [], []
@@ -257,6 +259,8 @@ def serialize(state: TrainState, config: ConfigDict = None):
                     }
     
     return serialized_dict
+
+# TODO improve documentation below
 
 # TODO add support for various activation functions and model architectures to be loaded
 def save_model(state: TrainState, config: ConfigDict = None, out_name: str = "my_flax_model.pkl"):

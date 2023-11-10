@@ -209,7 +209,11 @@ class SVDLightCurveModel(object):
         self.interpolation_type = interpolation_type
         self.filters = filters
 
-        self.svd_path = get_models_home(svd_path)
+        # TODO improve upon this hacky way
+        if interpolation_type == "flax":
+            self.svd_path = "/home/urash/twouters/nmma_models/flax_models"
+        else:
+            self.svd_path = get_models_home(svd_path)
 
         # Some models have underscores. Keep those, but drop '_tf' if it exists
         model_name_components = model.split("_")
@@ -350,8 +354,19 @@ class SVDLightCurveModel(object):
                 outdir = lbol_modelfile.replace(".pkl", "")
                 outfile = os.path.join(outdir, "model.h5")
                 self.svd_lbol_model["model"] = load_model(outfile)
+                
+        elif self.interpolation_type == "flax":
+            from .utils_flax import load_model_all_filts
+
+            if os.path.isfile(modelfile):
+                print(modelfile)
+                with open(modelfile, "rb") as handle:
+                    self.svd_mag_model = pickle.load(handle)
+                model_dir = os.path.join(self.svd_path, core_model_name + "/")
+                load_model_all_filts(self.svd_mag_model, model_dir)
+                self.svd_lbol_model = None
         else:
-            return ValueError("--interpolation-type must be sklearn_gp or tensorflow")
+            raise ValueError("--interpolation-type must be sklearn_gp or tensorflow")
 
     def __repr__(self):
         return self.__class__.__name__ + "(model={0}, svd_path={1})".format(
