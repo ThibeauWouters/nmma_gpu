@@ -1,19 +1,23 @@
+import os
 from typing import Sequence, Callable
 import functools
 import time
+import numpy as np
 
 import jax
 import jax.numpy as jnp
 
+import flax
 from flax import linen as nn  # Linen API
 from flax.training import train_state  # Useful dataclass to keep train state
 from flax import struct                # Flax dataclasses
 from flax.training.train_state import TrainState
+from nmma.em.training import SVDTrainingModel
 
 from ml_collections import ConfigDict
-
-# from clu import metrics
 import optax
+
+import pickle
 
 """Dataset creation"""
 
@@ -68,10 +72,18 @@ def get_default_config():
 
 """Neural network architectures"""
 
-class MLP(nn.Module):
-
+class BaseNeuralnet(nn.Module):
+    """Abstract base class. Needs layer sizes and activation function used"""
     layer_sizes: Sequence[int] # sizes of the hidden layers of the neural network
     act_func: Callable # activation function applied on each hidden layer
+
+    def setup(self):
+        raise NotImplementedError
+    
+    def __call__(self, x):
+        raise NotImplementedError    
+
+class MLP(BaseNeuralnet):
 
     def setup(self):
         self.layers = [nn.Dense(n) for n in self.layer_sizes]
@@ -95,23 +107,24 @@ class MLP(nn.Module):
         return x
 
 
-class NeuralNetwork(nn.Module):
-    """A very basic initial neural network used for testing the basic functionalities of Flax.
+# TODO can this be removed now?
+# class NeuralNetwork(nn.Module):
+#     """A very basic initial neural network used for testing the basic functionalities of Flax.
 
-    Returns:
-        NeuralNetwork: The architecture of the neural network
-    """
+#     Returns:
+#         NeuralNetwork: The architecture of the neural network
+#     """
 
-    @nn.compact
-    def __call__(self, x):
-        x = nn.Dense(features=24)(x)
-        x = nn.relu(x)
-        x = nn.Dense(features=64)(x)
-        x = nn.relu(x)
-        x = nn.Dense(features=24)(x)
-        x = nn.relu(x)
-        x = nn.Dense(features=10)(x)
-        return x
+#     @nn.compact
+#     def __call__(self, x):
+#         x = nn.Dense(features=24)(x)
+#         x = nn.relu(x)
+#         x = nn.Dense(features=64)(x)
+#         x = nn.relu(x)
+#         x = nn.Dense(features=24)(x)
+#         x = nn.relu(x)
+#         x = nn.Dense(features=10)(x)
+#         return x
 
 
 """Training"""
@@ -225,3 +238,82 @@ def train_loop(state: TrainState, train_X, train_y, val_X = None, val_y = None, 
 
     return state, train_losses, val_losses
 
+def serialize(state: TrainState, config: ConfigDict = None):
+    # Create own serialization to save later on
+    
+    # If no config dict was given, we assume we used the default one
+    if config is None:
+        config = get_default_config()
+    
+    # Get state dict, which has params
+    params = flax.serialization.to_state_dict(state)["params"]
+    
+    # TODO why is act func throwing errors?
+    # Quick workaround:
+    del config["act_func"]
+    
+    serialized_dict = {"params": params,
+                    "config": config,
+                    }
+    
+    return serialized_dict
+
+# TODO add support for various activation functions and model architectures to be loaded
+def save_model(state: TrainState, config: ConfigDict = None, out_name: str = "my_flax_model.pickle"):
+    serialized_dict = serialize(state, config)
+    with open(out_name, 'wb') as handle:
+        pickle.dump(serialized_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    
+def load_model(filename):
+    """Load and return training state for a single model"""
+    # TODO get model architecture from a string
+    
+    with open(filename, 'rb') as handle:
+        loaded_dict = pickle.load(handle)
+        
+    config = loaded_dict["config"]
+    layer_sizes = config["layer_sizes"]
+    # TODO this throws errors
+    act_func = flax.linen.relu
+    # act_func = config["act_func"]
+    params = loaded_dict["params"]
+        
+    if config["name"] == "MLP":
+        model = MLP(layer_sizes, act_func)
+    else:
+        raise ValueError("Error loading model, architecture name not recognized.")
+    
+    # # Initialize train state
+    # # TODO cumbersome way to fetch the input dimension, is there a better way? I.e. save input ndim while saving model?
+    # params_keys = list(params.keys())
+    # first_layer = params[params_keys[0]]
+    # input_ndim = np.shape(first_layer)[0]
+    
+    # Create train state without optimizer
+    state = TrainState.create(apply_fn = model.apply, params = params, tx = optax.adam(config.learning_rate))
+    
+    return state
+
+def save_model_all_filts(svd_model: SVDTrainingModel, config: ConfigDict = None, out_name: str = "my_flax_model"):
+    # Save the learned model for all filters in SVD model
+    filters = list(svd_model.keys())
+    for filt in filters:
+        model = svd_model[filt]["model"]
+        save_model(model, config, out_name=out_name + f"_{filt}.pickle")
+        
+def load_model_all_filts(svd_model: SVDTrainingModel, model_dir: str):
+    # Iterate over all the filters that are present in the SVD model
+    filters = list(svd_model.keys())
+    for filt in filters:
+        # Check whether we have a saved model for this filter
+        # TODO what if file extension changes?
+        filenames = [file for file in os.listdir(model_dir) if f"{filt}.pickle" in file]
+        if len(filenames) == 0:
+            raise ValueError(f"Error loading flax model: filter {filt} does not seem to be saved in directory {model_dir}")
+        elif len(filenames) > 1:
+            print(f"Warning: there are several matches with filter {filt} in directory {model_dir}, loading first")
+        # If we have a saved model, load in and save into our object
+        filename = filenames[0]
+        state = load_model(model_dir + filename)
+        svd_model[filt]["model"] = state
