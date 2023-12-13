@@ -532,12 +532,11 @@ def calc_lc_flax(
         #     f = interp.interp1d(tt_interp[ii], mag_back[ii], fill_value="extrapolate")
         #     maginterp = f(tt)
 
-        # f = interp.interp1d(tt, mag_back, fill_value="extrapolate")
-        # maginterp = f(tt)
+        maginterp = jnp.interp(tt, tt_interp, mag_back, left="extrapolate", right="extrapolate")        
 
-        maginterp = mag_back
         mAB[filt] = maginterp
 
+    # TODO: currently not used, what if we want to use it?
     if svd_lbol_model is not None:
         if lbol_ncoeff:
             n_coeff = min(lbol_ncoeff, svd_lbol_model["n_coeff"])
@@ -579,7 +578,40 @@ def calc_lc_flax(
 
     return np.squeeze(tt), np.squeeze(lbol), mAB
 
+# TODO faster versions with jit?
 
+
+
+def get_calc_lc_jit(
+        tt,
+        svd_mag_model=None,
+        svd_lbol_model=None,
+        mag_ncoeff=None,
+        lbol_ncoeff=None,
+        filters=None,
+    ):
+    """
+    Generate a jitted version of calc_lc. The returned function assumes that tt, svd_mag_model, svd_lbol_model, mag_ncoeff, lbol_ncoeff, and filters are all fixed.
+    
+    Parameters
+    ----------
+        Refer to calc_lc for parameter descriptions
+        
+    Returns
+    -------
+        calc_lc_jit: function
+            Jitted version of calc_lc, which takes in only the parameters.
+    """
+    
+    calc_lc_given_params = lambda x: calc_lc_flax(tt, 
+                                                  x, 
+                                                  svd_mag_model=svd_mag_model, 
+                                                  svd_lbol_model=svd_lbol_model, 
+                                                  mag_ncoeff=mag_ncoeff, 
+                                                  lbol_ncoeff=lbol_ncoeff, 
+                                                  filters=filters)
+    
+    return jax.jit(calc_lc_given_params)
 
 
 def calc_spectra(tt, lambdaini, lambdamax, dlambda, param_list, svd_spec_model=None):

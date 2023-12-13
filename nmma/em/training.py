@@ -65,7 +65,8 @@ class SVDTrainingModel(object):
         univariate_spline=False,
         univariate_spline_s=2,
         random_seed=42,
-        start_training=True
+        start_training=True,
+        load_model=True
     ):
 
         if interpolation_type not in ["sklearn_gp", "tensorflow", "api_gp", "flax"]:
@@ -112,10 +113,11 @@ class SVDTrainingModel(object):
             self.svd_model = self.generate_svd_model()
             self.train_model()
             self.save_model()
+        elif not load_model:
+            print("Not loading new model")
         else:
             print("Model exists... will load that model.")
-
-        self.load_model()
+            self.load_model()
 
     def interpolate_data(self, data_time_unit="days"):
 
@@ -641,6 +643,23 @@ class SVDTrainingModel(object):
                     self.svd_model[filt]["gps"][ii] = load_api_gp_model(
                         self.svd_model[filt]["gps"][ii]
                     )
+                    
+        elif self.interpolation_type == "flax":
+            try:
+                from nmma.em.utils_flax import load_model as load_flax_model
+            except ImportError:
+                raise ValueError("Install flax if you want to use it...")
+            
+            get_model(self.svd_path, f"{self.model}", self.filters)
+            
+            with open(modelfile, "rb") as handle:
+                self.svd_model = pickle.load(handle)
+
+            outdir = os.path.join(self.svd_path, f"{self.model}")
+            for filt in self.svd_model.keys():
+                outfile = os.path.join(outdir, f"{filt}.pkl")
+                self.svd_model[filt]["model"] = load_flax_model(outfile)
+                    
 
 
 def load_api_gp_model(gp):
